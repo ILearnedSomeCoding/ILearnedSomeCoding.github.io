@@ -176,7 +176,8 @@ window.CAS_WORKER_BASE64="dmFyIGNyZWF0ZUNhc01vZHVsZT0oKCk9Pnt2YXIgX3NjcmlwdE5hbW
     setStatus("正在加载", "loading");
     updateRunButton();
     let workerUrl = "worker.js?v=20260815-8";
-    if(location.protocol === "file:"){
+    let blobWorkerUrl = false;
+    if(window.CAS_WORKER_BASE64 || window.CAS_WORKER_SOURCE){
       let workerPayload = window.CAS_WORKER_SOURCE;
       if(window.CAS_WORKER_BASE64){
         const binary = atob(window.CAS_WORKER_BASE64);
@@ -190,9 +191,12 @@ window.CAS_WORKER_BASE64="dmFyIGNyZWF0ZUNhc01vZHVsZT0oKCk9Pnt2YXIgX3NjcmlwdE5hbW
       }
       workerUrl = URL.createObjectURL(new Blob(
         [workerPayload], {type: "text/javascript"}));
+      blobWorkerUrl = true;
+    }else if(location.protocol === "file:"){
+      setStatus("引擎文件缺失", "error");
+      return;
     }
     const loadingWorker = new Worker(workerUrl);
-    if(workerUrl.startsWith("blob:")) URL.revokeObjectURL(workerUrl);
     worker = loadingWorker;
     const loadTimeout = setTimeout(() => {
       if(worker === loadingWorker && !ready){
@@ -204,6 +208,7 @@ window.CAS_WORKER_BASE64="dmFyIGNyZWF0ZUNhc01vZHVsZT0oKCk9Pnt2YXIgX3NjcmlwdE5hbW
       const message = event.data;
       if(message.type === "ready"){
         clearTimeout(loadTimeout);
+        if(blobWorkerUrl) URL.revokeObjectURL(workerUrl);
         const bits = Math.max(1, Math.min(1048576,
           Number(precisionInput.value) || message.precision));
         callWorker("setPrecision", bits).then(() => {
@@ -230,7 +235,8 @@ window.CAS_WORKER_BASE64="dmFyIGNyZWF0ZUNhc01vZHVsZT0oKCk9Pnt2YXIgX3NjcmlwdE5hbW
     };
     worker.onerror = event => {
       clearTimeout(loadTimeout);
-      setStatus("Worker 错误", "error");
+      if(blobWorkerUrl) URL.revokeObjectURL(workerUrl);
+      setStatus(`Worker 错误${event.message ? `: ${event.message}` : ""}`, "error");
       for(const request of pending.values()) request.reject(new Error(event.message));
       pending.clear();
     };
